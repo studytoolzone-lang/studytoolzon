@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Image Compressor — StudyToolZone</title>
+
+<!-- Styles: clean card UI matching StudyToolZone palette -->
+<style>
+  :root{
+    --white:#ffffff;
+    --blue:#0056ff;
+    --red:#e50914;
+    --muted:#5b6470;
+    --card:#fbfdff;
+    --bg:#ffffff;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+    background:var(--bg);
+    color:#111;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{
+    max-width:960px;
+    margin:36px auto;
+    padding:20px;
+  }
+  .card{
+    background:var(--card);
+    border-radius:var(--radius);
+    padding:20px;
+    border:1px solid rgba(0,86,255,0.06);
+    box-shadow:0 10px 30px rgba(0,0,0,0.04);
+  }
+  h1{
+    margin:0 0 6px;
+    color:var(--blue);
+    font-size:20px;
+  }
+  p.lead{margin:0 0 14px;color:var(--muted)}
+
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  label.small{font-size:13px;color:var(--muted);display:block;margin-bottom:6px}
+
+  input[type=file]{
+    display:block;
+  }
+
+  .controls{margin-top:12px;display:flex;gap:10px;flex-wrap:wrap}
+  .btn{
+    padding:10px 14px;border-radius:10px;border:0;cursor:pointer;font-weight:600;
+  }
+  .btn.primary{background:var(--red);color:white}
+  .btn.ghost{background:transparent;border:1px solid var(--blue);color:var(--blue)}
+
+  .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  @media (max-width:700px){.form-grid{grid-template-columns:1fr}}
+
+  input[type=range]{width:100%}
+  input[type=number]{width:100%;padding:8px;border-radius:8px;border:1px solid #e6eefc}
+
+  .preview{margin-top:18px;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+  .preview img{max-width:320px;border-radius:8px;border:1px solid #e6eefc}
+  .meta{font-size:13px;color:var(--muted)}
+
+  .result-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}
+
+  .note{font-size:13px;color:#333;margin-top:12px}
+  .small-muted{font-size:13px;color:var(--muted)}
+
+  .download-link{display:inline-block;padding:8px 12px;border-radius:8px;background:var(--blue);color:white;text-decoration:none;font-weight:600}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Image Compressor</h1>
+      <p class="lead">Compress images instantly in your browser. Adjust quality and max dimensions, preview, then download the compressed image.</p>
+
+      <label class="small">Choose an image (JPG/PNG/WebP)</label>
+      <input id="fileInput" type="file" accept="image/*" />
+
+      <div class="form-grid">
+        <div>
+          <label class="small">Quality (0.1 = smallest, 1 = best)</label>
+          <input id="quality" type="range" min="0.1" max="1" step="0.05" value="0.8" />
+          <div class="small-muted">Current: <span id="qualityVal">0.80</span></div>
+        </div>
+
+        <div>
+          <label class="small">Max Width (px) — 0 = keep original</label>
+          <input id="maxWidth" type="number" min="0" value="0" />
+        </div>
+
+        <div>
+          <label class="small">Max Height (px) — 0 = keep original</label>
+          <input id="maxHeight" type="number" min="0" value="0" />
+        </div>
+
+        <div>
+          <label class="small">Convert PNG → JPEG (smaller size, removes transparency)</label>
+          <div style="margin-top:6px">
+            <input id="toJpeg" type="checkbox" /> <label for="toJpeg" class="small-muted">Convert to JPEG</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="compressBtn" class="btn primary" disabled>Compress</button>
+        <button id="clearBtn" class="btn ghost" style="display:none">Clear</button>
+      </div>
+
+      <div id="status" class="note" aria-live="polite"></div>
+
+      <div class="preview" id="previewArea" style="display:none">
+        <div>
+          <div class="small-muted">Original</div>
+          <img id="origPreview" src="" alt="Original preview" />
+          <div class="meta" id="origMeta"></div>
+        </div>
+        <div>
+          <div class="small-muted">Compressed</div>
+          <img id="compPreview" src="" alt="Compressed preview" />
+          <div class="meta" id="compMeta"></div>
+          <div style="margin-top:8px" id="downloadArea"></div>
+        </div>
+      </div>
+
+      <div class="note">
+        Tip: For best compression keep quality between 0.6–0.85 and set max width/height if you don't need full-resolution images. Converting PNG → JPEG removes transparency but usually gives much smaller files.
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const fileInput = document.getElementById('fileInput');
+  const compressBtn = document.getElementById('compressBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const quality = document.getElementById('quality');
+  const qualityVal = document.getElementById('qualityVal');
+  const maxWidth = document.getElementById('maxWidth');
+  const maxHeight = document.getElementById('maxHeight');
+  const toJpeg = document.getElementById('toJpeg');
+  const status = document.getElementById('status');
+  const previewArea = document.getElementById('previewArea');
+  const origPreview = document.getElementById('origPreview');
+  const compPreview = document.getElementById('compPreview');
+  const origMeta = document.getElementById('origMeta');
+  const compMeta = document.getElementById('compMeta');
+  const downloadArea = document.getElementById('downloadArea');
+
+  let selectedFile = null;
+  let origBlobURL = null;
+
+  function formatBytes(bytes){
+    if(bytes === 0) return '0 B';
+    const k = 1024, dm = 2;
+    const sizes = ['B','KB','MB','GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  }
+
+  quality.addEventListener('input', ()=> { qualityVal.textContent = Number(quality.value).toFixed(2); });
+
+  fileInput.addEventListener('change', (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    if(!f.type.startsWith('image/')) {
+      status.textContent = 'Please select an image file.';
+      return;
+    }
+    selectedFile = f;
+    compressBtn.disabled = false;
+    clearBtn.style.display = 'inline-block';
+    status.textContent = `Selected: ${f.name}`;
+    if(origBlobURL) URL.revokeObjectURL(origBlobURL);
+    origBlobURL = URL.createObjectURL(f);
+    origPreview.src = origBlobURL;
+    origPreview.onload = ()=> {
+      previewArea.style.display = 'flex';
+      origMeta.textContent = `${origPreview.naturalWidth}×${origPreview.naturalHeight} • ${formatBytes(f.size)}`;
+    };
+    compPreview.src = '';
+    compMeta.textContent = '';
+    downloadArea.innerHTML = '';
+  });
+
+  clearBtn.addEventListener('click', ()=>{
+    fileInput.value = '';
+    selectedFile = null;
+    compressBtn.disabled = true;
+    clearBtn.style.display = 'none';
+    status.textContent = '';
+    previewArea.style.display = 'none';
+    compPreview.src = '';
+    compMeta.textContent = '';
+    downloadArea.innerHTML = '';
+    if(origBlobURL) { URL.revokeObjectURL(origBlobURL); origBlobURL = null; }
+  });
+
+  compressBtn.addEventListener('click', async ()=>{
+    if(!selectedFile) return;
+    compressBtn.disabled = true;
+    status.textContent = 'Preparing image…';
+    try {
+      const img = await loadImageFromFile(selectedFile);
+      const targetInfo = calculateTargetSize(img.width, img.height, Number(maxWidth.value), Number(maxHeight.value));
+      const mimeType = decideMimeType(selectedFile.type, toJpeg.checked);
+      const q = Number(quality.value);
+
+      status.textContent = `Resizing to ${targetInfo.w}×${targetInfo.h}…`;
+      const blob = await canvasToBlob(img, targetInfo.w, targetInfo.h, mimeType, q);
+
+      // show preview
+      const compURL = URL.createObjectURL(blob);
+      compPreview.src = compURL;
+      // get blob size
+      compMeta.textContent = `${targetInfo.w}×${targetInfo.h} • ${formatBytes(blob.size)}`;
+
+      // download link
+      const outName = (selectedFile.name.replace(/\.[^/.]+$/, "")) + (mimeType === 'image/jpeg' ? '.jpg' : getExtension(mimeType));
+      downloadArea.innerHTML = `<a class="download-link" href="${compURL}" download="${outName}">Download ${outName}</a>`;
+
+      status.textContent = 'Compression complete.';
+    } catch(err){
+      console.error(err);
+      status.textContent = 'Error: ' + (err.message || err);
+    } finally {
+      compressBtn.disabled = false;
+    }
+  });
+
+  // Helpers
+  function loadImageFromFile(file){
+    return new Promise((resolve, reject)=>{
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = ()=> { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = (e)=> { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
+      img.src = url;
+    });
+  }
+
+  function calculateTargetSize(origW, origH, maxW, maxH){
+    // if both 0 -> keep original
+    if(!maxW && !maxH) return {w: origW, h: origH};
+    let w = origW, h = origH;
+    if(maxW && w > maxW){
+      const ratio = maxW / w;
+      w = Math.round(w * ratio);
+      h = Math.round(h * ratio);
+    }
+    if(maxH && h > maxH){
+      const ratio = maxH / h;
+      h = Math.round(h * ratio);
+      w = Math.round(w * ratio);
+    }
+    return {w, h};
+  }
+
+  function decideMimeType(origType, forceJpeg){
+    if(forceJpeg) return 'image/jpeg';
+    // if original is png or webp, keep it (note: quality param ignored by PNG in many browsers)
+    if(origType === 'image/png') return 'image/png';
+    if(origType === 'image/webp') return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  function getExtension(mime){
+    if(mime === 'image/png') return '.png';
+    if(mime === 'image/webp') return '.webp';
+    if(mime === 'image/jpeg') return '.jpg';
+    return '';
+  }
+
+  function canvasToBlob(img, width, height, mimeType, quality){
+    return new Promise((resolve, reject)=>{
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      // fill white background when converting to JPEG to avoid black background for transparent images
+      if(mimeType === 'image/jpeg'){
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+      }
+      // draw image
+      ctx.drawImage(img, 0, 0, width, height);
+      // toBlob (quality only used for image/jpeg and image/webp in supporting browsers)
+      canvas.toBlob((blob)=>{
+        if(!blob) reject(new Error('Compression failed (toBlob returned null)'));
+        else resolve(blob);
+      }, mimeType, quality);
+    });
+  }
+
+})();
+</script>
+</body>
+</html>
