@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PDF → Word — StudyToolZone</title>
+
+<!-- Simple styling matching StudyToolZone white/blue/red accents (adjust as needed) -->
+<style>
+  :root{
+    --white:#ffffff;
+    --blue:#0056ff;
+    --red:#e50914;
+    --muted:#5b6470;
+    --card:#f9fbff;
+  }
+  body{
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    margin:0;
+    background: var(--white);
+    color:#111;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+  }
+  .container{
+    max-width:980px;
+    margin:48px auto;
+    padding:24px;
+  }
+  .card{
+    background: white;
+    border: 1px solid rgba(0,86,255,0.06);
+    border-radius:12px;
+    padding:20px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.04);
+  }
+  h1{
+    margin:0 0 8px 0;
+    font-size:20px;
+    color:var(--blue);
+  }
+  p.lead{
+    margin:0 0 18px 0;
+    color:var(--muted);
+  }
+
+  .row{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+
+  input[type=file]{
+    display:block;
+  }
+
+  .controls{
+    margin-top:14px;
+  }
+
+  button.primary{
+    background:var(--red);
+    color:white;
+    border:0;
+    padding:10px 14px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  button.ghost{
+    background:transparent;
+    border:1px solid var(--blue);
+    color:var(--blue);
+    padding:8px 12px;
+    border-radius:8px;
+    cursor:pointer;
+  }
+
+  .progress{
+    margin-top:12px;
+    font-size:13px;
+    color:var(--muted);
+  }
+
+  .hint{
+    margin-top:10px;
+    font-size:13px;
+    color:#333;
+  }
+
+  .foot{
+    margin-top:18px;
+    font-size:13px;
+    color:var(--muted);
+  }
+
+  .small{
+    font-size:13px;
+    color:var(--muted);
+  }
+
+  @media (max-width:600px){
+    .row{flex-direction:column; align-items:stretch}
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>PDF → Word Converter</h1>
+      <p class="lead">Upload a PDF and download a text-based Microsoft Word (.docx). Works fully in-browser. (Formatting may be minimal.)</p>
+
+      <label class="small">Select PDF file</label>
+      <div class="row" style="margin-top:8px">
+        <input id="fileInput" type="file" accept="application/pdf" />
+        <div style="flex:1"></div>
+      </div>
+
+      <div class="controls">
+        <button id="convertBtn" class="primary" disabled>Convert to Word (.docx)</button>
+        <button id="clearBtn" class="ghost" style="display:none">Clear</button>
+      </div>
+
+      <div id="status" class="progress" aria-live="polite"></div>
+
+      <div class="hint">
+        Tip: For best results use text-based PDFs (not scanned images). Scanned PDFs require OCR (not included here).
+      </div>
+
+      <div class="foot">
+        <div class="small">StudyToolZone — PDF to Word tool. Contact: <a href="mailto:studytoolzone@gmail.com">studytoolzone@gmail.com</a></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Libraries: pdf.js and docx (UMD) from unpkg -->
+  <script src="https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.min.js"></script>
+  <script src="https://unpkg.com/docx@7.7.0/build/index.umd.js"></script>
+
+  <script>
+  // Basic PDF -> text -> docx conversion
+  (function(){
+    const fileInput = document.getElementById('fileInput');
+    const convertBtn = document.getElementById('convertBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const status = document.getElementById('status');
+
+    let selectedFile = null;
+
+    fileInput.addEventListener('change', (e) => {
+      selectedFile = e.target.files && e.target.files[0] ? e.target.files[0] : null;
+      status.textContent = selectedFile ? `Selected: ${selectedFile.name}` : '';
+      convertBtn.disabled = !selectedFile;
+      clearBtn.style.display = selectedFile ? 'inline-block' : 'none';
+    });
+
+    clearBtn.addEventListener('click', () => {
+      fileInput.value = '';
+      selectedFile = null;
+      convertBtn.disabled = true;
+      clearBtn.style.display = 'none';
+      status.textContent = '';
+    });
+
+    convertBtn.addEventListener('click', async () => {
+      if(!selectedFile) return;
+      convertBtn.disabled = true;
+      status.textContent = 'Reading PDF…';
+      try{
+        const arrayBuffer = await selectedFile.arrayBuffer();
+
+        // configure pdf.js worker
+        if(window.pdfjsLib){
+          // use built-in worker script by setting workerSrc to unpkg path
+          pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://unpkg.com/pdfjs-dist@2.16.105/build/pdf.worker.min.js';
+        } else {
+          throw new Error('pdf.js not loaded');
+        }
+
+        const loadingTask = pdfjsLib.getDocument({data: arrayBuffer});
+        const pdf = await loadingTask.promise;
+        const totalPages = pdf.numPages;
+        status.textContent = `PDF loaded — ${totalPages} page(s). Extracting text…`;
+
+        // accumulate paragraphs
+        const paragraphs = [];
+
+        for(let p=1; p<=totalPages; p++){
+          status.textContent = `Extracting page ${p} / ${totalPages}…`;
+          const page = await pdf.getPage(p);
+          const textContent = await page.getTextContent();
+          // textContent.items contain runs — join them in reading order
+          const pageText = textContent.items.map(i => i.str).join(' ');
+          // Normalize whitespace
+          const cleaned = pageText.replace(/\s+/g, ' ').trim();
+          if(cleaned.length>0){
+            paragraphs.push(cleaned);
+          } else {
+            // if page is empty string, add a blank line for page break
+            paragraphs.push('');
+          }
+        }
+
+        status.textContent = 'Building Word document…';
+
+        // Use docx to build a docx file
+        const { Document, Packer, Paragraph, TextRun } = docx;
+
+        const doc = new Document({
+          sections: [{
+            properties:{},
+            children: paragraphs.map(pg => {
+              // simple heuristic: create a separate paragraph per page paragraph
+              return new Paragraph({
+                children: [ new TextRun(pg) ]
+              });
+            })
+          }]
+        });
+
+        status.textContent = 'Generating .docx file…';
+        const blob = await Packer.toBlob(doc);
+
+        // Download
+        const outName = selectedFile.name.replace(/\.pdf$/i,'') + '.docx';
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = outName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        status.textContent = `Conversion finished — downloaded "${outName}"`;
+      } catch (err){
+        console.error(err);
+        status.textContent = 'Error: ' + (err.message || err);
+      } finally {
+        convertBtn.disabled = false;
+      }
+    });
+
+  })();
+  </script>
+</body>
+</html>
